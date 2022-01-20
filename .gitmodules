@@ -1,0 +1,3 @@
+[submodule "SimplePlot"]
+	path = SimplePlot
+	url = git@github.com:CherginetsDA/SimplePlot.git
