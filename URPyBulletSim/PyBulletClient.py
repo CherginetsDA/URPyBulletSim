@@ -5,7 +5,7 @@ from pybullet_utils import bullet_client as bc
 from pybullet_utils import urdfEditor as ed
 
 client = bc.BulletClient(connection_mode = p.GUI)
-p.setGravity(gravX = 0, gravY = 0, gravZ = 9.81)
+p.setGravity(gravX = 0, gravY = 0, gravZ = -9.81)
 p.setRealTimeSimulation(True)
 
 
@@ -50,6 +50,8 @@ def init_joint_control(body_id: int, joint_id: int, target: float = 0.0):
         targetVelocity = 0,
         force = 10000
     )
+
+def init_force_torque_sensor(body_id: int, joint_id: int):
     p.enableJointForceTorqueSensor(
         bodyUniqueId = body_id,
         jointIndex = joint_id,
@@ -73,7 +75,6 @@ def set_states(body_id: int, control_joints: List[int], state: np.ndarray):
         )
 
 def get_user_debug_parameter(name, limits, value):
-    print(value)
     return p.addUserDebugParameter(name, min(limits), max(limits), value)
 
 def read_user_debag_parameter(parameter):
@@ -107,3 +108,6 @@ def get_jacobian(
                 )
     print(jacobian)
     return np.array(jacobian[0] + jacobian[1])
+
+def get_quaternion_from_euler(euler_angle: np.ndarray):
+    return np.array(p.getQuaternionFromEuler(euler_angle.tolist()))

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="small_box">
+  <link name="box">
+    <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.1 0.1 0.1"/>
+      </geometry>
+      <material name="a">
+        <color rgba="0.9 0.05 0.05 1.0"/>
+      </material>
+    </visual>
+    <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.1 0.1 0.1"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="base"/>
+  <joint name="box" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base"/>
+    <child link="box"/>
+  </joint>
+</robot>

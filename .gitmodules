@@ -1,3 +1,6 @@
 [submodule "SimplePlot"]
 	path = SimplePlot
 	url = git@github.com:CherginetsDA/SimplePlot.git
+[submodule "kdl_parser"]
+	path = kdl_parser
+	url = https://github.com/ros/kdl_parser.git
