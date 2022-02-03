@@ -6,7 +6,11 @@ from pybullet_utils import urdfEditor as ed
 
 client = bc.BulletClient(connection_mode = p.GUI)
 p.setGravity(gravX = 0, gravY = 0, gravZ = -9.81)
-p.setRealTimeSimulation(True)
+p.setTimeStep(timeStep=1e-2)
+
+
+def set_real_time():
+    p.setRealTimeSimulation(True)
 
 
 def add_object(
@@ -31,6 +35,9 @@ def add_object(
          | p.URDF_INITIALIZE_SAT_FEATURES\
          | p.URDF_USE_IMPLICIT_CYLINDER
          )
+
+def step():
+    p.stepSimulation()
 
 def get_client():
     return globals()['client']
@@ -58,7 +65,7 @@ def init_force_torque_sensor(body_id: int, joint_id: int):
         enableSensor = True
     )
 
-def set_states(body_id: int, control_joints: List[int], state: np.ndarray):
+def set_states(body_id: int, control_joints: List[int], state: np.ndarray, value):
     forces = []
     for i in range(len(control_joints)):
         forces.append(
@@ -70,7 +77,7 @@ def set_states(body_id: int, control_joints: List[int], state: np.ndarray):
             p.POSITION_CONTROL,
             targetPositions=state.tolist(),
             targetVelocities=[0]*len(state),
-            positionGains=[0.04]*len(state),
+            positionGains=[value]*len(state),
             forces=forces
         )
 

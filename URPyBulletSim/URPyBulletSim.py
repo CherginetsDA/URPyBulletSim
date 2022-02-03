@@ -19,8 +19,11 @@ class URSim:
         self,
         urdf_path: str,
         base_position: np.ndarray = np.array([0., 0., 0.]),
-        base_orientation: np.ndarray = np.array([0., 0., 0., 1.])
+        base_orientation: np.ndarray = np.array([0., 0., 0., 1.]),
+        realtime: bool = True
     ):
+        if realtime:
+            pbc.set_real_time()
         self.__urdf_filepath = urdf_path
         self.__base_position = base_position
         self.__base_orientation = base_orientation
@@ -32,7 +35,10 @@ class URSim:
         self.__position = None
         self.__velocity = None
         self.__torque = None
-        self.__FT_sensor = None
+        self.__FT_sensor = np.zeros(6)
+        self.__filter_N = 1
+        self.__ft_buffer = np.zeros((6,self.__filter_N))
+        self.__ft_index = 0
 
     def initialize(
         self,
@@ -148,8 +154,8 @@ class URSim:
         self.__fk_velsolver.JntToCart(to_jnt_array_vel(q, dq), vel_frame)
         return to_np_matrix(vel_frame.GetTwist(),6)
 
-    def set_state(self, state: np.ndarray):
-        '''
+    def set_state(self, state: np.ndarray, value):
+        '''Kp =
         Set desire position and robot get it by the Position control.
 
         Keyword arguments:
@@ -158,8 +164,13 @@ class URSim:
         pbc.set_states(
             body_id = self.__body_id,
             control_joints = self.__index_control_joints,
-            state = state
+            state = state,
+            value = value
         )
+
+    def step(self):
+        pbc.step()
+        self.update_joint_states()
 
     def add_gui_sliders(self):
         '''
@@ -191,9 +202,25 @@ class URSim:
         self.__position = np.array([i[0] for i in temp])
         self.__velocity = np.array([i[1] for i in temp])
         self.__torque = np.array([i[3] for i in temp])
-        self.__FT_sensor = np.array(
+        ft_sensor = np.array(
             pbc.get_joint_states(self.__body_id, [self.num_joints - 2])[0][2]
         )
+        for i in range(6):
+            sign = np.sign(ft_sensor[i])
+            if ft_sensor[i]*sign > 100:
+                ft_sensor[i] = 100*sign
+            self.__ft_buffer[i][self.__ft_index] = ft_sensor[i]
+            self.__FT_sensor[i] = self.__ft_buffer[i].mean()
+        self.__ft_index = (self.__ft_index + 1) % self.__filter_N
+        # pose = self.fk_pose(self.__position)
+        # temp = kdl.Rotation().Quaternion(pose[3],pose[4],pose[5],pose[6])
+        # ## TODO: fix mass
+        # v = kdl.Vector(0,0,3)
+        # res = temp*v
+        # self.__FT_sensor[0] += res[1]
+        # self.__FT_sensor[1] += res[0]
+        # self.__FT_sensor[2] -= res[2]
+
 
 
     # def calculate_ik(
@@ -291,6 +318,7 @@ class UR5eSim(URSim):
         self,
         base_position: np.ndarray = np.array([0., 0., 0.]),
         base_orientation: np.ndarray = np.array([0., 0., 0., 1.]),
+        realtime: bool = True
         ):
         urdf_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -303,7 +331,8 @@ class UR5eSim(URSim):
         super().__init__(
             urdf_path = urdf_path,
             base_position = base_position,
-            base_orientation = base_orientation
+            base_orientation = base_orientation,
+            realtime = realtime
         )
 
 
