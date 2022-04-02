@@ -47,18 +47,15 @@ def main():
     sp = SimplePlot(time_limit = 5, legend = ['Fx','Fy', 'Fz', 'Tx', 'Ty', 'Tz'])
     # sp_2 = SimplePlot(time_limit = 5, legend = ['Fx','Fy', 'Fz', 'Tx', 'Ty', 'Tz'])
 
-    v = kdl.Vector(0,0,3)
-    r = kdl.Rotation()
+    pose = robot.fk_pose(robot.position, quaternion = True)
+    pos = pose[:3]
+    rot = pose[3:]
+    acc = np.array([0]*3)
+    vel = np.array([0]*6)
     while True:
-        robot.set_state(state = robot.read_gui_sliders())
+        robot.set_state(state = robot.read_gui_sliders(), value = .5)
         robot.update_joint_states()
-        pose = robot.fk_pose(robot.position)
-        CP = pose[:3]
-        ROT = pose[3:]
-        print(ROT)
-        new_angles = robot.ik_pose(CP, ROT)
-        sss = robot.FT_sensor
-        sp.update(sss)
+        sp.update(robot.FT_sensor.tolist())
 
 
 if __name__=='__main__':

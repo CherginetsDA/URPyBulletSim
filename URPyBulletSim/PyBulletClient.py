@@ -113,8 +113,29 @@ def get_jacobian(
                     objVelocities = velocity.tolist(),
                     objAccelerations = acceleration.tolist()
                 )
-    print(jacobian)
     return np.array(jacobian[0] + jacobian[1])
 
 def get_quaternion_from_euler(euler_angle: np.ndarray):
     return np.array(p.getQuaternionFromEuler(euler_angle.tolist()))
+
+def get_mass_matrix(body_id: int, position: np.ndarray):
+    return np.array(
+        p.calculateMassMatrix(
+            bodyUniqueId = body_id,
+            objPositions = position.tolist()
+        )
+    )
+
+def get_coriolis_and_gravity_vector(
+    body_id: int,
+    position: np.ndarray,
+    velocity: np.ndarray
+):
+    return np.array(
+        p.calculateInverseDynamics(
+            bodyUniqueId = body_id,
+            objPositions = position.tolist(),
+            objVelocities = velocity.tolist(),
+            objAccelerations = [0]*6
+        )
+    )

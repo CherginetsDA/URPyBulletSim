@@ -1,4 +1,5 @@
 from . import PyBulletClient as pbc
+from . import jacobi_der
 import os
 import sys
 import time
@@ -107,6 +108,7 @@ class URSim:
 
         self.__jacsolver        = kdl.ChainJntToJacSolver(self.__chain)
         self.__djacsolver       = kdl.ChainJntToJacDotSolver(self.__chain)
+        self.__dyn_params       = kdl.ChainDynParam(self.__chain,kdl.Vector(0,0,-9.81))
 
     def ik_pose(self, position: np.ndarray,  orientation = None):
         pos = kdl.Vector(position[0],position[1],position[2])
@@ -127,20 +129,69 @@ class URSim:
         self.__ik_posesolver.CartToJnt(joints_angles, goal, result)
         return np.array(list(result))
 
+    @property
+    def jacobian(self) -> np.ndarray:
+        jac = kdl.Jacobian(self.__position.shape[0])
+        self.__jacsolver.JntToJac(to_jnt_array(self.__position), jac)
+        return to_np_matrix(jac, self.__position.shape[0])
 
-    def jacobian(self, q: np.ndarray) -> np.ndarray:
-        jac = kdl.Jacobian(q.shape[0])
-        self.__jacsolver.JntToJac(to_jnt_array(q), jac)
-        return to_np_matrix(jac, q.shape[0])
+    @property
+    def D_jacobian(self) -> np.ndarray:
+        d_jac = kdl.Jacobian(self.__position.shape[0])
+        self.__djacsolver.JntToJacDot(to_jnt_array_vel(self.__position, self.__velocity), d_jac)
+        return to_np_matrix(d_jac, self.__position.shape[0])
+    ## TODO: now jacobian derivative just for ur5e.
+    # Maybe getting parameters from pybullet will be a good idea
+    @property
+    def d_jacobian(self) -> np.ndarray:
+        return jacobi_der.der_jacobian(self.__position, self.__velocity)
 
-    def fk_pose(self, q: np.ndarray):
+    @property
+    def mass_matrix(self) -> np.ndarray:
+        return pbc.get_mass_matrix(
+            body_id = self.__body_id,
+            position = self.__position
+        )
+
+    @property
+    def Mass_matrix(self) -> np.ndarray:
+        mm = kdl.JntSpaceInertiaMatrix(self.__position.shape[0])
+        self.__dyn_params.JntToMass(to_jnt_array(self.__position), mm)
+        return to_np_matrix(mm, self.__position.shape[0])
+
+    @property
+    def Coriolis_vector(self) -> np.ndarray:
+        cv = kdl.JntArray(len(self.__index_control_joints))
+        self.__dyn_params.JntToCoriolis(to_jnt_array(self.__position),to_jnt_array(self.__velocity), cv)
+        return to_np_matrix(cv, self.__position.shape[0])
+
+    @property
+    def Gravity_vector(self) -> np.ndarray:
+        gv = kdl.JntArray(len(self.__index_control_joints))
+        self.__dyn_params.JntToGravity(to_jnt_array(self.__position), gv)
+        return to_np_matrix(gv, self.__position.shape[0])
+
+    @property
+    def coriolis_and_gravity_vector(self) -> np.ndarray:
+        return pbc.get_coriolis_and_gravity_vector(
+            body_id = self.__body_id,
+            position = self.__position,
+            velocity = self.__velocity
+        )
+
+    def fk_pose(self, q: np.ndarray, quaternion: bool = True):
         end_frame = kdl.Frame()
         self.__fk_posesolver.JntToCart(to_jnt_array(q),end_frame)
         pos = end_frame.p
         rot = kdl.Rotation(end_frame.M)
-        rot = rot.GetQuaternion()
-        return np.array([pos[0], pos[1], pos[2],
-                         rot[0], rot[1], rot[2], rot[3]])
+        if quaternion:
+            rot = rot.GetQuaternion()
+            return np.array([pos[0], pos[1], pos[2],
+                             rot[0], rot[1], rot[2], rot[3]])
+        else:
+            rot = rot.GetEulerZYX()
+            return np.array([pos[0], pos[1], pos[2],
+                             rot[0], rot[1], rot[2]])
 
     def rot(self, q: np.ndarray) -> np.ndarray:
         end_frame = kdl.Frame()
@@ -205,6 +256,10 @@ class URSim:
         ft_sensor = np.array(
             pbc.get_joint_states(self.__body_id, [self.num_joints - 2])[0][2]
         )
+        ## Корректировка на величину веса
+        ft_sensor[:3] -= self.rot(self.__position).T.dot(
+                np.array([0,0,3-0.056]).reshape(3,1)
+            ).flatten()
         for i in range(6):
             sign = np.sign(ft_sensor[i])
             if ft_sensor[i]*sign > 100:
@@ -274,6 +329,86 @@ class URSim:
     def FT_sensor(self):
         return self.__FT_sensor
 
+    def impedance_control_signals(
+        self,
+        pos_d: np.ndarray,
+        vel_d: np.ndarray,
+        acc_d: np.ndarray,
+        fd: bool = False,
+        cp: bool = False
+    ) -> np.ndarray:
+        Ms = np.diag([1]*6)*10 # inertia of spring
+        Bs = np.diag([800, 800, 800, 80, 80, 80])*0.01 # damping of spring
+        Ks = np.diag([80, 80, 200, 20, 20, 20]) # rigidity of spring
+        J = self.jacobian.reshape(6,6)
+        JT = J.T
+        invJ = np.linalg.inv(J)
+        invJT= invJ.T
+        # M = self.mass_matrix.reshape(6,6)
+        M = self.Mass_matrix.reshape(6,6)
+        # H = (self.Coriolis_vector + self.Gravity_vector).reshape(6,1)
+        H = self.coriolis_and_gravity_vector.reshape(6,1)
+        Gamma = invJT.dot(M).dot(invJ)
+        # np.dot(invJT, M, invJ)
+
+        h = invJT.dot(H) - Gamma.dot(self.D_jacobian).dot(self.velocity.reshape(6,1))
+        Fa = self.FT_sensor.reshape(6,1)
+        ## Check it
+        temp = (invJT.dot((H - JT.dot(Fa))) + Fa - h).flatten()
+        # print('Must be around zero: ',temp)
+        # print((self.__torque - H.flatten()))
+        # ddq = np.linalg.inv(M).dot(self.__torque.reshape(6,1) + JT.dot(Fa) - H)
+        # print(ddq.flatten())
+
+        pose = self.fk_pose(
+            q = self.__position.reshape(6,1),
+            quaternion = False
+        )
+        pose_err = -pose.reshape(6,1) + pos_d.reshape(6,1)
+        if pose_err.flatten()[5] > np.pi:
+            pose_err[5] -=2*np.pi
+        if pose_err.flatten()[5] < -np.pi:
+            pose_err[5] +=2*np.pi
+        y = acc_d.reshape(6,1) + \
+            np.linalg.inv(Gamma).dot(
+                Bs.dot(vel_d.reshape(6,1) - J.dot(self.__velocity.reshape(6,1))) +\
+                Ks.dot(pose_err) +\
+                Fa
+            )
+        # print('Impedance: ', y.flatten())
+        ctrl = (J.T).dot(Gamma.dot(y) + h - Fa)
+        if fd :
+            if cp:
+                ddx = np.linalg.inv(Gamma).dot(invJT.dot(ctrl) - h)
+                return y
+
+            ddq = np.linalg.inv(M).dot(ctrl + JT.dot(Fa*0) - H)
+            return ddq
+        print("STSUKO")
+        # ddq = np.linalg.inv(M).dot(ctrl + JT.dot(Fa) - H)
+        # ddq = np.linalg.inv(M).dot(ctrl + JT.dot(Fa)*0 - H)
+        # print('AAAA', (J.dot(ddq) - y + self.D_jacobian.dot(self.velocity.reshape(6,1))).flatten())
+        # print(np.linalg.inv(Gamma).dot(invJ.T.dot(u) - h + Fa))
+        return ctrl
+
+    def fd(
+        self,
+        ctrl : np.ndarray
+    ) -> np.ndarray:
+        J = self.jacobian
+        invJ = np.linalg.inv(J)
+        M = self.Mass_matrix
+        H = (self.Coriolis_vector + self.Gravity_vector).reshape(6,1)
+        Gamma = np.dot(invJ.T, M, invJ)
+        h = (invJ.T).dot(H) - (Gamma.dot(self.D_jacobian)).dot(self.velocity.reshape(6,1))
+        # ddq = np.linalg.inv(M).dot(ctrl + JT.dot(Fa) - H)
+        ddx = np.linalg.inv(Gamma).dot(invJ.T.dot(ctrl) - h)
+        # print(np.linalg.det(M))
+        # print(np.linalg.inv(Gamma))
+        # print('Forward D: ', ddx.flatten())
+        return ddx
+
+
 
 def to_np_matrix(kdl_data, size: int) -> np.ndarray:
     if isinstance(kdl_data, (kdl.JntSpaceInertiaMatrix, kdl.Jacobian, kdl.Rotation)):
@@ -310,6 +445,9 @@ def to_jnt_array_vel(q: np.ndarray, dq:np.ndarray)-> kdl.JntArrayVel:
 def quaternioun(matrix: np.ndarray) -> np.ndarray:
     pass
 
+
+
+
 class UR5eSim(URSim):
     '''
     Class UR5e simulation
@@ -334,6 +472,7 @@ class UR5eSim(URSim):
             base_orientation = base_orientation,
             realtime = realtime
         )
+
 
 
 if __name__=='__main__':

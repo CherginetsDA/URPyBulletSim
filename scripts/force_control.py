@@ -103,7 +103,7 @@ def main():
             t += dt
             desire_force[2] = start_des_forces[2] + 10*np.sin(t*2)
             line += desire_force.tolist()
-            print(desire_force)
+            # print(desire_force)
             # robot.update_joint_states()
             pose = robot.fk_pose(robot.position)
             xo = Xo(t, start_state)
@@ -112,7 +112,7 @@ def main():
             line += force_vector.tolist()
             if (force_vector).sum() < .5:
                 sum_eF += np.array([0,0, 0.001])
-                print('Hello')
+                # print('Hello')
                 eF = np.zeros(3)
             else:
                 eF = desire_force[:3] - force_vector
@@ -121,8 +121,8 @@ def main():
             xd = xo - xf
             line += xd.tolist()
             line += pose[:3].tolist()
-
-            print(xd)
+            print(robot.jacobian.dot(robot.velocity))
+            # print(xd)
             new_state = robot.ik_pose(position = xd, orientation = ROT)
 
             robot.set_state(state = np.array(new_state), value = .5)
