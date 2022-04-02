@@ -59,7 +59,7 @@ def go_to_init_position(robot):
     print(new_angles)
     while (np.abs(new_angles - robot.position)).sum() > 1e-2:
         robot.step()
-    init_pose = robot.fk_pose(robot.position)
+    init_pose = robot.fk_pose(robot.position,quaternion = False)
     print('Start...')
     return init_pose[3:]
 
@@ -76,7 +76,7 @@ def main():
     robot = UR5eSim()
     robot.initialize()
     pose = robot.fk_pose(robot.position, quaternion = False)
-    rot = pose[3:].tolist()
+    rot = go_to_init_position(robot)
     acc = np.array([0]*6)
     sp = SimplePlot(size_limit = 500, legend = ['Fx','Fy', 'Fz', 'Tx', 'Ty', 'Tz'])
     t = 0

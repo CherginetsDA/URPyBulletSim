@@ -37,7 +37,7 @@ class URSim:
         self.__velocity = None
         self.__torque = None
         self.__FT_sensor = np.zeros(6)
-        self.__filter_N = 1
+        self.__filter_N = 10
         self.__ft_buffer = np.zeros((6,self.__filter_N))
         self.__ft_index = 0
 
@@ -338,8 +338,8 @@ class URSim:
         cp: bool = False
     ) -> np.ndarray:
         Ms = np.diag([1]*6)*10 # inertia of spring
-        Bs = np.diag([800, 800, 800, 80, 80, 80])*0.01 # damping of spring
-        Ks = np.diag([80, 80, 200, 20, 20, 20]) # rigidity of spring
+        Bs = np.diag([800, 800, 800, 80, 80, 80]) # damping of spring
+        Ks = np.diag([80, 80, 200, 60, 60, 60]) # rigidity of spring
         J = self.jacobian.reshape(6,6)
         JT = J.T
         invJ = np.linalg.inv(J)
@@ -364,13 +364,17 @@ class URSim:
             q = self.__position.reshape(6,1),
             quaternion = False
         )
+        # correct angle
         pose_err = -pose.reshape(6,1) + pos_d.reshape(6,1)
         if pose_err.flatten()[5] > np.pi:
             pose_err[5] -=2*np.pi
         if pose_err.flatten()[5] < -np.pi:
             pose_err[5] +=2*np.pi
+
+
+        Fd = np.array([0,0,30,0,0,0]).reshape(6,1)
         y = acc_d.reshape(6,1) + \
-            np.linalg.inv(Gamma).dot(
+            np.linalg.inv(Ms).dot(
                 Bs.dot(vel_d.reshape(6,1) - J.dot(self.__velocity.reshape(6,1))) +\
                 Ks.dot(pose_err) +\
                 Fa

@@ -40,27 +40,23 @@ def add_objects_to_scene():
 
 def go_to_init_position(robot):
     robot.update_joint_states()
-    # init_pose = robot.fk_pose(robot.position)
-    # init_pose[0] = 0.5
-    # init_pose[1] = 0
-    # init_pose[2] = 0.35
-    # init_pose[3] = np.sqrt(2)/2
-    # init_pose[4] = -init_pose[3]
-    # init_pose[5] = 0
-    # init_pose[6] = 0
+    init_pose = robot.fk_pose(robot.position)
+    init_pose[0] = 0.5
+    init_pose[1] = 0
+    init_pose[2] = 0.1
     pi = np.pi
-    # new_angles = robot.ik_pose(init_pose[:3], init_pose[3:])
-    new_angles = np.zeros(6)
-    new_angles[1] = -pi/2
-    new_angles[2] = pi/2
-    new_angles[3] = -pi/2
-    new_angles[4] = -pi/2
+    new_angles = robot.ik_pose(init_pose[:3], init_pose[3:])
+    # new_angles = np.zeros(6)
+    # new_angles[1] = -pi/2
+    # new_angles[2] = pi/2
+    # new_angles[3] = -pi/2
+    # new_angles[4] = -pi/2
     robot.set_state(state = np.array(new_angles), value = .04)
     print('Get ready.')
     print(new_angles)
     while (np.abs(new_angles - robot.position)).sum() > 1e-2:
         robot.step()
-    init_pose = robot.fk_pose(robot.position)
+    init_pose = robot.fk_pose(robot.position,quaternion = False)
     print('Start...')
     return init_pose[3:]
 
@@ -77,37 +73,34 @@ def main():
     robot = UR5eSim()
     robot.initialize()
     pose = robot.fk_pose(robot.position, quaternion = False)
-    rot = pose[3:].tolist()
+    rot = go_to_init_position(robot)
+    rot[2] += 0.1 
     acc = np.array([0]*6)
     sp = SimplePlot(size_limit = 500, legend = ['Fx','Fy', 'Fz', 'Tx', 'Ty', 'Tz'])
     t = 0
     last_time = time.time()
 
     while t < 200:
-        t += 1e-2
+        if np.sqrt(np.sum(robot.FT_sensor**2)) < 25:
+            t += 1e-2
         pose = robot.fk_pose(robot.position, quaternion = False)
-        print(pose[3:])
-        print(rot)
-        qwe = [pose[2], 0.15 + 0.1*np.sin(t), 0.005 + 0.1*np.sin(t) - pose[2]]
         # sp.update(pose.flatten().tolist()[:3])
         sp.update(robot.FT_sensor.tolist())
+        # print([ 0.5, 0.2, 0.005 - 0.001*t] + rot.tolist())
+        # print('Here',rot)
         ddq = robot.impedance_control_signals(
-            np.array([ 0.5, 0.2, 0.005 - 0.001*t] + rot),
-            np.array([0]*2 + [0.001] + [0]*3),
+            np.array([ 0.5, 0.2, 0.005 - 0.01*t] + rot.tolist()),
+            np.array([0]*2 + [0.01] + [0]*3),
             np.array([0]*2 + [0] + [0]*3),
             fd = True,
             cp = True
         )
-        # print(ddq)
         dv = 5e-3*(acc +  ddq.flatten())
-        # print(dv)
         robot_vel = robot.jacobian.dot(robot.velocity.reshape(6,1)).flatten()
         temp_vel = robot_vel + dv
         acc = ddq.flatten()
         dp = 5e-3*(robot_vel + temp_vel)
-        # print(dp)
         new_position = pose + dp
-        # print(new_position)
         orientation = kdl.Rotation().EulerZYX(new_position[3],new_position[4],new_position[5]).GetQuaternion()
         new_angles =robot.ik_pose(
             position=new_position[:3].flatten(),
