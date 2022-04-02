@@ -337,9 +337,14 @@ class URSim:
         fd: bool = False,
         cp: bool = False
     ) -> np.ndarray:
-        Ms = np.diag([1]*6)*10 # inertia of spring
-        Bs = np.diag([800, 800, 800, 80, 80, 80]) # damping of spring
-        Ks = np.diag([80, 80, 200, 60, 60, 60]) # rigidity of spring
+        # Ms = np.diag([1]*6)*10 # inertia of spring
+        # Bs = np.diag([800, 800, 800, 80, 80, 80]) # damping of spring
+        # Ks = np.diag([80, 80, 200, 60, 60, 60]) # rigidity of spring
+
+        Ms = np.diag([1]*6)# inertia of spring
+        Bs = np.diag([0, 0, 0, 0, 0, 0]) # damping of spring
+        Ks = np.diag([1, 1, 1, 1, 1, 1])*1e3 # rigidity of spring
+
         J = self.jacobian.reshape(6,6)
         JT = J.T
         invJ = np.linalg.inv(J)
@@ -354,7 +359,7 @@ class URSim:
         h = invJT.dot(H) - Gamma.dot(self.D_jacobian).dot(self.velocity.reshape(6,1))
         Fa = self.FT_sensor.reshape(6,1)
         ## Check it
-        temp = (invJT.dot((H - JT.dot(Fa))) + Fa - h).flatten()
+        # temp = (invJT.dot((H - JT.dot(Fa))) + Fa - h).flatten()
         # print('Must be around zero: ',temp)
         # print((self.__torque - H.flatten()))
         # ddq = np.linalg.inv(M).dot(self.__torque.reshape(6,1) + JT.dot(Fa) - H)
@@ -377,13 +382,13 @@ class URSim:
             np.linalg.inv(Ms).dot(
                 Bs.dot(vel_d.reshape(6,1) - J.dot(self.__velocity.reshape(6,1))) +\
                 Ks.dot(pose_err) +\
-                Fa
+                Fa - Fd
             )
         # print('Impedance: ', y.flatten())
         ctrl = (J.T).dot(Gamma.dot(y) + h - Fa)
         if fd :
             if cp:
-                ddx = np.linalg.inv(Gamma).dot(invJT.dot(ctrl) - h)
+                ddx = np.linalg.inv(Gamma).dot(invJT.dot(ctrl) - h + Fd)
                 return y
 
             ddq = np.linalg.inv(M).dot(ctrl + JT.dot(Fa*0) - H)

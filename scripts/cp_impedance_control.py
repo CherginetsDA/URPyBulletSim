@@ -74,7 +74,7 @@ def main():
     robot.initialize()
     pose = robot.fk_pose(robot.position, quaternion = False)
     rot = go_to_init_position(robot)
-    rot[2] += 0.1 
+    rot[2] += 0.1
     acc = np.array([0]*6)
     sp = SimplePlot(size_limit = 500, legend = ['Fx','Fy', 'Fz', 'Tx', 'Ty', 'Tz'])
     t = 0
@@ -88,10 +88,11 @@ def main():
         sp.update(robot.FT_sensor.tolist())
         # print([ 0.5, 0.2, 0.005 - 0.001*t] + rot.tolist())
         # print('Here',rot)
+        ROT = (rot + np.array([0,0,0*0.5*np.sin(t)])).tolist()
         ddq = robot.impedance_control_signals(
-            np.array([ 0.5, 0.2, 0.005 - 0.01*t] + rot.tolist()),
-            np.array([0]*2 + [0.01] + [0]*3),
-            np.array([0]*2 + [0] + [0]*3),
+            np.array([ 0.5, 0.2, 0.005 - 0.01*t] + ROT),
+            np.array([0]*2 + [0.01] + [0]*2 + [0.5*np.cos(t)*0]),
+            np.array([0]*2 + [0] + [0]*2 + [-0.5*np.sin(t)*0]),
             fd = True,
             cp = True
         )
